@@ -3,6 +3,7 @@ import csv
 import sys
 from datetime import datetime, timedelta, time
 from icalendar import Calendar, Event
+from collections import defaultdict
 
 DAYS_IN_WEEK = 6  # Si on inclu samedi
 # Sachant que la semaine 0 est la semaine du 16/09
@@ -26,11 +27,34 @@ class Groupe_Changeant(Enum):
 
 class Parser():
     def __init__(self):
+        # Map of French day abbreviations to day offsets
+        self.DAY_MAP = {
+            'Lu': 0,  # Monday
+            'Ma': 1,  # Tuesday
+            'Me': 2,  # Wednesday
+            'Je': 3,  # Thursday
+            'Ve': 4,  # Friday
+        }
+
+
         self.plannings = [None, None, None]
+        self.colles_planning = None
+
         self.load_plannings()
+        self.load_and_parse_colles()
+
+        print(self.colles_planning)
+
+
+
+
 
     def get_planning_by_group(self, group_changeant):
         return self.plannings[group_changeant.value]
+
+    def get_colle(self, date, groupe_id):
+        str_date = date.strftime('%d/%m')
+        return self.colles_planning.get((str_date, groupe_id), None)
 
     def load_plannings(self):
         for groupe_changeant_index in range(3):
@@ -49,6 +73,64 @@ class Parser():
 
             parsed_planning = self.planning_parser(planning)  # on veut enlever les répétitions
             self.plannings[groupe_changeant_index] = parsed_planning
+
+    def load_and_parse_colles(self):
+        # POSSIBILITE D'ERREUR SI UN GROUPE A 2 COLLES LE MEME JOUR (pas le cas pour l'instant)
+        data = defaultdict(tuple)  # Structure: {(date, group_id): (subject, colleur, horaire, salle)}
+
+        with open("collometre.csv", newline='', encoding='utf-8') as csvfile:
+            reader = csv.reader(csvfile)
+            headers = next(reader)  # First line contains the dates (week start dates)
+            subjects = None  # Keep track of the current subject
+
+            for row in reader:
+                if not row[1]:  # If the second column is empty, it's a subject row
+                    subjects = row[0].strip()  # Set the subject (Mathématiques, Informatique, etc.)
+                    continue
+
+                colleur = row[0].strip()  # The name of the colleur
+                horaire = row[1].strip()  # The schedule (e.g., Lu 12-13)
+                salle = row[2].strip()    # The exam room
+
+                # Extract the day abbreviation (e.g., 'Lu') and time range (e.g., '12-13')
+                day_abbr, time_range = horaire.split(' ')
+
+                # Determine if the time range uses 'h' format or not and parse accordingly
+                if 'h' in time_range:
+                    start_time_str, end_time_str = time_range.split('-')
+                    start_time = datetime.strptime(start_time_str, '%Hh%M').time()  # e.g., 12h15
+                    end_time = datetime.strptime(end_time_str, '%Hh%M').time()  # e.g., 13h15
+                else:
+                    start_time_str, end_time_str = time_range.split('-')
+                    start_time = datetime.strptime(start_time_str, '%H').time()  # e.g., 12
+                    end_time = datetime.strptime(end_time_str, '%H').time()  # e.g., 13
+
+                for i, group in enumerate(row[3:], 3):  # Iterate over the groups (skipping columns 0, 1, and 2)
+                    week_start_str = headers[i].strip()  # Get the corresponding week start date from the headers
+
+                    try:
+                        # Parse the week start date (e.g., '16/09') into a datetime object
+                        week_start_date = datetime.strptime(week_start_str, '%d/%m')
+                    except ValueError:
+                        continue  # Skip if the date is invalid
+
+                    # Calculate the actual event date based on the day abbreviation
+                    if day_abbr in self.DAY_MAP:
+                        day_offset = self.DAY_MAP[day_abbr]
+                        event_date = week_start_date + timedelta(days=day_offset)
+                        event_date_str = event_date.strftime('%d/%m')
+                    else:
+                        continue  # Skip unknown day abbreviations
+
+                    groups = group.split('+') if group else []  # Handle multiple groups separated by '+'
+
+                    # Add the data to the subject entry in the dictionary
+                    for g in groups:
+                        g_id = int(g)  # Convert group ID to integer for sorting
+                        # Append the subject, colleur, start and end time, and salle
+                        data[(event_date_str, g_id)] = (subjects, colleur, (start_time,end_time), salle)
+
+        self.colles_planning = data
 
     def planning_parser(self, planning_brut):
         parsed_planning = [[] for day in range(DAYS_IN_WEEK)]
@@ -98,9 +180,10 @@ class Parser():
 
 
 class Manager():
-    def __init__(self, groupe_statique_personnel):
+    def __init__(self, groupe_statique_personnel, group_colle):
         self.groupe_statique = groupe_statique_personnel
         self.groupe_changeant = self.get_starting_changing_group(groupe_statique_personnel)
+        self.group_colle_id = group_colle
 
         self.current_week = 0
         self.this_week_planning = PLANNINGS.get_planning_by_group(self.groupe_changeant)
@@ -133,6 +216,24 @@ class Manager():
     def add_week_to_calendar(self):
         for day_index, day_schedule in enumerate(self.this_week_planning):
             event_date = self.start_date + timedelta(days=day_index, weeks=self.current_week)
+
+            #Add colle
+            if colle_event_object:= PLANNINGS.get_colle(event_date, self.group_colle_id):
+                #colle_event_object = (subject, colleur, horaire, salle)
+                matiere, colleur, horaire, salle = colle_event_object
+
+                #ToDO add colleur
+
+                # Create an event
+                event = Event()
+                event.add('summary', "COLLE " + matiere)
+                event.add('dtstart', datetime.combine(event_date, horaire[0]))
+                event.add('dtend', datetime.combine(event_date, horaire[1]))
+                event.add('location', salle)
+                event.add('dtstamp', datetime.now())
+
+                # Add the event to the calendar
+                self.calendar.add_component(event)
 
             for start_time, end_time, header in day_schedule:
                 if header:  # Skip events without a name
@@ -187,7 +288,7 @@ if __name__ == '__main__':
         g = input("Veuillez indiquer votre groupe: ")
         static_group = get_static_group(g)
 
-    w = Manager(static_group)
+    w = Manager(Groupe_Statique.G_A, 10)
 
     for week_number in range(16):
         w.compute_week()
