@@ -192,3 +192,6 @@ if __name__ == '__main__':
     for week_number in range(16):
         w.compute_week()
     w.save_calendar()
+
+
+#Commit test
