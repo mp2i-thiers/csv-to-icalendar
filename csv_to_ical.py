@@ -47,8 +47,9 @@ def main():
     generate_schedule(
             colle_group=colle_group,
             output_filename=f"schedule_{colle_group}.ics",
-            include_colles=True,
-            include_schedule=True
+            include_colles=False,
+            include_schedule=False,
+            include_room_planning=True
     )
 
 
@@ -57,10 +58,12 @@ def generate_schedule(
         static_group=None,
         output_filename="schedule.ics",
         include_colles=False,
-        include_schedule=False
+        include_schedule=False,
+        include_room_planning=False
 ):
     lesson_plannings = None
     colle_schedule = None
+    room_planning = None
 
     if include_colles:
         if colle_group is None:
@@ -75,11 +78,22 @@ def generate_schedule(
                 static_group = _get_static_group(colle_group)
         lesson_plannings = parse_csv_schedule()
 
+    if include_room_planning:
+        if static_group is None:
+            if colle_group is None:
+                raise Exception("Colle group or static group needed")
+
+            static_group = _get_static_group(colle_group)
+
+        room_planning = parse_room_schedule()
+
     calendar = get_calendar(
             include_colles,
             include_schedule,
+            include_room_planning,
             colle_schedule,
             lesson_plannings,
+            room_planning,
             static_group
     )
 
@@ -87,7 +101,11 @@ def generate_schedule(
         f.write(calendar.to_ical())
 
 
-def generate_all(include_colles=False, include_schedule=True):
+def generate_all(
+        include_colles=False,
+        include_schedule=True,
+        include_room_schedule=False
+):
     if include_schedule:
         static_group_list = [
             StaticGroup.A,
@@ -98,8 +116,9 @@ def generate_all(include_colles=False, include_schedule=True):
             generate_schedule(
                     static_group=groupe_statique,
                     output_filename=f"schedule_{groupe_statique.name}.ics",
-                    include_colles=False,
-                    include_schedule=True
+                    include_colles=include_colles,
+                    include_schedule=include_schedule,
+                    include_room_planning=include_room_schedule
             )
 
     # TODO add include for colles (on va pas faire de fichier unique avec
@@ -132,6 +151,28 @@ def parse_csv_schedule():
         plannings[groupe_changeant_index] = cleaned_planning
 
     return plannings
+
+
+def parse_room_schedule():
+    planning = [[] for day in range(DAYS_IN_WEEK)]
+
+    with open("room.csv", newline='', encoding="utf-8") as csvfile:
+        reader = csv.reader(csvfile)
+
+        _ = next(reader)
+
+        for row in reader:
+            for day in range(DAYS_IN_WEEK):
+
+                event = ("", 0)
+                if row[day+1] not in ["1", "2", "3"]:
+                    event = (row[0], None)
+                else:
+                    event = (row[0], int(row[day + 1]) - 1)
+                print(event)
+                planning[day].append(event)
+
+    return _group_long_subjects(planning)
 
 
 def parse_collometre(colle_group):
@@ -208,8 +249,10 @@ def parse_collometre(colle_group):
 def get_calendar(
         include_colles=True,
         include_schedule=True,
+        include_room_schedule=False,
         colle_planning=None,
         lesson_plannings=None,
+        room_planning=None,
         static_group=None
 ):
     if static_group is None:
@@ -221,25 +264,39 @@ def get_calendar(
     if colle_planning is None and include_colles:
         raise Exception("Il faut un planning de colles")
 
+    if room_planning is None and include_room_schedule:
+        raise Exception("Il faut le planning de la salle")
+
     calendar = Calendar()
 
     current_week = 0
     # To take vacation into account
     week_offset = 0
 
-    if include_schedule:
+    if include_schedule or include_room_schedule:
         while current_week < WEEK_COUNT:
-            lesson_events = _get_week_events(
-                    lesson_plannings[
-                        # We do not add `week_offset` because vacation don't
-                        # count in the changing group pattern
-                        _get_changing_group(static_group, current_week)
-                    ],
-                    current_week + week_offset
-            )
+            if include_schedule:
+                lesson_events = _get_week_events(
+                        lesson_plannings[
+                            # We do not add `week_offset` because vacation
+                            # don't count in the changing group pattern
+                            _get_changing_group(static_group, current_week)
+                        ],
+                        current_week + week_offset
+                )
 
-            for event in lesson_events:
-                calendar.add_component(event)
+                for event in lesson_events:
+                    calendar.add_component(event)
+
+            if include_room_schedule:
+                room_events = _get_week_room_events(
+                        room_planning,
+                        _get_changing_group(static_group, current_week),
+                        current_week + week_offset
+                )
+
+                for event in room_events:
+                    calendar.add_component(event)
 
             week_offset += _get_next_week_offset(current_week + week_offset)
             current_week += 1
@@ -319,6 +376,35 @@ def _get_week_events(planning, current_week):
     return events
 
 
+def _get_week_room_events(room_planning, changing_group, current_week):
+    events = []
+
+    for day_index, day_schedule in enumerate(room_planning):
+        event_date = START_DATE + timedelta(days=day_index, weeks=current_week)
+
+        for start_time, end_time, group in day_schedule:
+            if group is None or group == changing_group:
+                continue
+
+            start_datetime = PARIS_TZ.localize(
+                    datetime.combine(event_date, start_time))
+            end_datetime = PARIS_TZ.localize(
+                    datetime.combine(event_date, end_time))
+
+            event = Event()
+            print(group)
+            event.add(
+                    'summary',
+                    "Salle occuppée par G" + str(group+1)
+            )
+            event.add('dtstart', start_datetime)
+            event.add('dtend', end_datetime)
+
+            events.append(event)
+
+    return events
+
+
 # Returns colle events from a colle schedule
 def _get_colle_events(colle_schedule):
     events = []
@@ -393,6 +479,9 @@ def _group_long_subjects(planning_brut):
     parsed_planning = [[] for day in range(DAYS_IN_WEEK)]
 
     for day in range(DAYS_IN_WEEK):
+        if len(planning_brut[day]) == 0:
+            continue
+
         event_starting_time, current_event = planning_brut[day][0]
 
         for event in planning_brut[day][1:]:
