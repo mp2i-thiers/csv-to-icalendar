@@ -7,7 +7,7 @@ from enum import Enum
 from icalendar import Calendar, Event
 
 # Define timezone for France (Europe/Paris)
-paris_tz = pytz.timezone('Europe/Paris')
+PARIS_TZ = pytz.timezone('Europe/Paris')
 
 # Counting saturday
 DAYS_IN_WEEK = 6
@@ -40,7 +40,25 @@ class ChangingGroup(Enum):
     G2 = 1
     G3 = 2
 
-def generate_schedule(colle_group=None, static_group=None, output_filename="schedule.ics", include_colles=False, include_schedule=False):
+
+# The entrypoint of the program
+def main():
+    colle_group = _get_user_colle_group()
+    generate_schedule(
+            colle_group=colle_group,
+            output_filename=f"schedule_{colle_group}.ics",
+            include_colles=True,
+            include_schedule=True
+    )
+
+
+def generate_schedule(
+        colle_group=None,
+        static_group=None,
+        output_filename="schedule.ics",
+        include_colles=False,
+        include_schedule=False
+):
     lesson_plannings = None
     colle_schedule = None
 
@@ -57,18 +75,17 @@ def generate_schedule(colle_group=None, static_group=None, output_filename="sche
                 static_group = _get_static_group(colle_group)
         lesson_plannings = parse_csv_schedule()
 
-    parametres = {
-        'include_colles': include_colles,
-        'include_schedule': include_schedule,
-        'colle_planning': colle_schedule,
-        'lesson_plannings': lesson_plannings,
-        'static_group': static_group
-
-    }
-    calendar = get_calendar(kwargs=parametres)
+    calendar = get_calendar(
+            include_colles,
+            include_schedule,
+            colle_schedule,
+            lesson_plannings,
+            static_group
+    )
 
     with open(output_filename, 'wb') as f:
         f.write(calendar.to_ical())
+
 
 def generate_all(include_colles=False, include_schedule=True):
     if include_schedule:
@@ -78,48 +95,15 @@ def generate_all(include_colles=False, include_schedule=True):
             StaticGroup.C
         ]
         for groupe_statique in static_group_list:
-            generate_schedule(static_group=groupe_statique, output_filename=f"schedule_{groupe_statique.name}.ics",
-                              include_colles=False, include_schedule=True)
+            generate_schedule(
+                    static_group=groupe_statique,
+                    output_filename=f"schedule_{groupe_statique.name}.ics",
+                    include_colles=False,
+                    include_schedule=True
+            )
 
-    #ToDo add include for colles (on va pas faire de fichier unique avec colles ET le reste je pense
-
-
-# The entrypoint of the program
-def main():
-    colle_group = _get_user_colle_group()
-    generate_schedule(colle_group=colle_group, output_filename=f"schedule_{colle_group}.ics", include_colles=True, include_schedule=True)
-
-def _get_user_colle_group():
-    if len(sys.argv) >= 2:
-        arg = sys.argv[1]
-        try:
-            group = int(arg)
-            if 1 <= group <= 18:
-                return group
-        except ValueError:
-            pass
-
-    user_input = input("Entrez le numéro de votre groupe de colle : ")
-    try:
-        group = int(user_input)
-    except ValueError:
-        print("Veuillez entrer un nombre entier entre 1 et 18.")
-        exit(1)
-
-    if 1 <= group <= 18:
-        return group
-
-    print("Le numéro groupe doit être compris entre 1 et 18 inclus.")
-    exit(1)
-
-
-def _get_static_group(colle_group):
-    static_group_list = [
-        StaticGroup.A,
-        StaticGroup.B,
-        StaticGroup.C
-    ]
-    return static_group_list[(colle_group + 2) % 3]
+    # TODO add include for colles (on va pas faire de fichier unique avec
+    # colles ET le reste je pense)
 
 
 # Parses the CSV schedules per group and returns a list of plannings per group
@@ -156,7 +140,7 @@ def parse_collometre(colle_group):
     with open("collometre.csv", newline='', encoding='utf-8') as csvfile:
         reader = csv.reader(csvfile)
 
-        headers = next(reader)
+        _ = next(reader)
         current_subject = ""
 
         for row in reader:
@@ -221,21 +205,19 @@ def parse_collometre(colle_group):
     return colles
 
 
-def get_calendar(kwargs):
-
-    # Extract kwargs with default values
-    include_colles = kwargs.get('include_colles', True)
-    include_schedule = kwargs.get('include_schedule', True)
-
-    static_group = kwargs.get('static_group')
+def get_calendar(
+        include_colles=True,
+        include_schedule=True,
+        colle_planning=None,
+        lesson_plannings=None,
+        static_group=None
+):
     if static_group is None:
         raise Exception("Il faut un groupe statique")
 
-    lesson_plannings = kwargs.get('lesson_plannings')
     if lesson_plannings is None and include_schedule:
         raise Exception("Il faut un planning")
 
-    colle_planning = kwargs.get('colle_planning')
     if colle_planning is None and include_colles:
         raise Exception("Il faut un planning de colles")
 
@@ -249,8 +231,8 @@ def get_calendar(kwargs):
         while current_week < WEEK_COUNT:
             lesson_events = _get_week_events(
                     lesson_plannings[
-                        # We do not add `week_offset` because vacation don't count in
-                        # the changing group pattern
+                        # We do not add `week_offset` because vacation don't
+                        # count in the changing group pattern
                         _get_changing_group(static_group, current_week)
                     ],
                     current_week + week_offset
@@ -268,6 +250,39 @@ def get_calendar(kwargs):
             calendar.add_component(event)
 
     return calendar
+
+
+def _get_user_colle_group():
+    if len(sys.argv) >= 2:
+        arg = sys.argv[1]
+        try:
+            group = int(arg)
+            if 1 <= group <= 18:
+                return group
+        except ValueError:
+            pass
+
+    user_input = input("Entrez le numéro de votre groupe de colle : ")
+    try:
+        group = int(user_input)
+    except ValueError:
+        print("Veuillez entrer un nombre entier entre 1 et 18.")
+        exit(1)
+
+    if 1 <= group <= 18:
+        return group
+
+    print("Le numéro groupe doit être compris entre 1 et 18 inclus.")
+    exit(1)
+
+
+def _get_static_group(colle_group):
+    static_group_list = [
+        StaticGroup.A,
+        StaticGroup.B,
+        StaticGroup.C
+    ]
+    return static_group_list[(colle_group + 2) % 3]
 
 
 def _apply_week_offsets(current):
@@ -314,8 +329,10 @@ def _get_colle_events(colle_schedule):
         event_date, start_time, end_time = start_end_time
 
         # Combine date with time
-        start_datetime = paris_tz.localize(datetime.combine(event_date, start_time))
-        end_datetime = paris_tz.localize(datetime.combine(event_date, end_time))
+        start_datetime = PARIS_TZ.localize(
+                datetime.combine(event_date, start_time))
+        end_datetime = PARIS_TZ.localize(
+                datetime.combine(event_date, end_time))
 
         event = Event()
         event.add('summary', "[Colle] " + subject)
@@ -342,8 +359,10 @@ def _get_day_lessons_events(event_date, day_schedule):
         # Skip events without a name
         if header:
             # Combine date with time
-            start_datetime = paris_tz.localize(datetime.combine(event_date, start_time))
-            end_datetime = paris_tz.localize(datetime.combine(event_date, end_time))
+            start_datetime = PARIS_TZ.localize(
+                    datetime.combine(event_date, start_time))
+            end_datetime = PARIS_TZ.localize(
+                    datetime.combine(event_date, end_time))
 
             headers = header.split('@')
             summary = headers[0]
@@ -429,4 +448,3 @@ def _format_starting_time(starting_time):
 
 if __name__ == '__main__':
     main()
-    #generate_all()
