@@ -39,10 +39,8 @@ class ChangingGroup(Enum):
 
 # The entrypoint of the program
 def main():
-    # TODO: take user input
-
-    static_group = StaticGroup.A
-    colle_group = 16
+    colle_group = _get_user_colle_group()
+    static_group = _get_static_group(colle_group)
 
     lesson_plannings = parse_csv_schedule()
     colle_schedule = parse_collometre(colle_group)
@@ -56,6 +54,39 @@ def main():
 
     with open("schedule.ics", 'wb') as f:
         f.write(calendar.to_ical())
+
+
+def _get_user_colle_group():
+    if len(sys.argv) >= 2:
+        arg = sys.argv[1]
+        try:
+            group = int(arg)
+            if 1 <= group <= 18:
+                return group
+        except ValueError:
+            pass
+
+    user_input = input("Entrez le numéro de votre groupe de colle : ")
+    try:
+        group = int(user_input)
+    except ValueError:
+        print("Veuillez entrer un nombre entier entre 1 et 18.")
+        exit(1)
+
+    if 1 <= group <= 18:
+        return group
+
+    print("Le numéro groupe doit être compris entre 1 et 18 inclus.")
+    exit(1)
+
+
+def _get_static_group(colle_group):
+    static_group_list = [
+        StaticGroup.A,
+        StaticGroup.B,
+        StaticGroup.C
+    ]
+    return static_group_list[(colle_group + 2) % 3]
 
 
 # Parses the CSV schedules per group and returns a list of plannings per group
