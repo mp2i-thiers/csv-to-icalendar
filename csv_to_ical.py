@@ -1,9 +1,13 @@
 import csv
 import sys
 
+import pytz
 from datetime import datetime, timedelta, time
 from enum import Enum
 from icalendar import Calendar, Event
+
+# Define timezone for France (Europe/Paris)
+paris_tz = pytz.timezone('Europe/Paris')
 
 # Counting saturday
 DAYS_IN_WEEK = 6
@@ -36,25 +40,54 @@ class ChangingGroup(Enum):
     G2 = 1
     G3 = 2
 
+def generate_schedule(colle_group=None, static_group=None, output_filename="schedule.ics", include_colles=False, include_schedule=False):
+    lesson_plannings = None
+    colle_schedule = None
+
+    if include_colles:
+        if colle_group is None:
+            raise Exception("Colle groupe needed")
+        colle_schedule = parse_collometre(colle_group)
+
+    if include_schedule:
+        if static_group is None:
+            if colle_group is None:
+                raise Exception("Colle groupe or Static group needed")
+            else:
+                static_group = _get_static_group(colle_group)
+        lesson_plannings = parse_csv_schedule()
+
+    parametres = {
+        'include_colles': include_colles,
+        'include_schedule': include_schedule,
+        'colle_planning': colle_schedule,
+        'lesson_plannings': lesson_plannings,
+        'static_group': static_group
+
+    }
+    calendar = get_calendar(kwargs=parametres)
+
+    with open(output_filename, 'wb') as f:
+        f.write(calendar.to_ical())
+
+def generate_all(include_colles=False, include_schedule=True):
+    if include_schedule:
+        static_group_list = [
+            StaticGroup.A,
+            StaticGroup.B,
+            StaticGroup.C
+        ]
+        for groupe_statique in static_group_list:
+            generate_schedule(static_group=groupe_statique, output_filename=f"schedule_{groupe_statique.name}.ics",
+                              include_colles=False, include_schedule=True)
+
+    #ToDo add include for colles (on va pas faire de fichier unique avec colles ET le reste je pense
+
 
 # The entrypoint of the program
 def main():
     colle_group = _get_user_colle_group()
-    static_group = _get_static_group(colle_group)
-
-    lesson_plannings = parse_csv_schedule()
-    colle_schedule = parse_collometre(colle_group)
-    calendar = get_calendar(
-            static_group,
-            START_DATE,
-            lesson_plannings,
-            colle_schedule,
-            WEEK_COUNT,
-    )
-
-    with open("schedule.ics", 'wb') as f:
-        f.write(calendar.to_ical())
-
+    generate_schedule(colle_group=colle_group, output_filename=f"schedule_{colle_group}.ics", include_colles=True, include_schedule=True)
 
 def _get_user_colle_group():
     if len(sys.argv) >= 2:
@@ -188,39 +221,51 @@ def parse_collometre(colle_group):
     return colles
 
 
-def get_calendar(
-        static_group,
-        start_date,
-        lesson_plannings,
-        colle_planning,
-        week_count
-):
+def get_calendar(kwargs):
+
+    # Extract kwargs with default values
+    include_colles = kwargs.get('include_colles', True)
+    include_schedule = kwargs.get('include_schedule', True)
+
+    static_group = kwargs.get('static_group')
+    if static_group is None:
+        raise Exception("Il faut un groupe statique")
+
+    lesson_plannings = kwargs.get('lesson_plannings')
+    if lesson_plannings is None and include_schedule:
+        raise Exception("Il faut un planning")
+
+    colle_planning = kwargs.get('colle_planning')
+    if colle_planning is None and include_colles:
+        raise Exception("Il faut un planning de colles")
+
     calendar = Calendar()
 
     current_week = 0
     # To take vacation into account
     week_offset = 0
 
-    while current_week < week_count:
-        lesson_events = _get_week_events(
-                lesson_plannings[
-                    # We do not add `week_offset` because vacation don't count in
-                    # the changing group pattern
-                    _get_changing_group(static_group, current_week)
-                ],
-                start_date,
-                current_week + week_offset,
-        )
+    if include_schedule:
+        while current_week < WEEK_COUNT:
+            lesson_events = _get_week_events(
+                    lesson_plannings[
+                        # We do not add `week_offset` because vacation don't count in
+                        # the changing group pattern
+                        _get_changing_group(static_group, current_week)
+                    ],
+                    current_week + week_offset
+            )
 
-        for event in lesson_events:
+            for event in lesson_events:
+                calendar.add_component(event)
+
+            week_offset += _get_next_week_offset(current_week + week_offset)
+            current_week += 1
+
+    if include_colles:
+        colle_events = _get_colle_events(colle_planning)
+        for event in colle_events:
             calendar.add_component(event)
-
-        week_offset += _get_next_week_offset(current_week + week_offset)
-        current_week += 1
-
-    colle_events = _get_colle_events(colle_planning)
-    for event in colle_events:
-        calendar.add_component(event)
 
     return calendar
 
@@ -246,11 +291,11 @@ def _get_changing_group(static_group, current_week):
 
 
 # Returns a list of all current week events
-def _get_week_events(planning, start_date, current_week):
+def _get_week_events(planning, current_week):
     events = []
 
     for day_index, day_schedule in enumerate(planning):
-        event_date = start_date + timedelta(days=day_index, weeks=current_week)
+        event_date = START_DATE + timedelta(days=day_index, weeks=current_week)
 
         day_events = _get_day_lessons_events(event_date, day_schedule)
 
@@ -268,11 +313,18 @@ def _get_colle_events(colle_schedule):
         subject, colleur, start_end_time, room = colle
         event_date, start_time, end_time = start_end_time
 
+        # Combine date with time
+        start_datetime = paris_tz.localize(datetime.combine(event_date, start_time))
+        end_datetime = paris_tz.localize(datetime.combine(event_date, end_time))
+
         event = Event()
         event.add('summary', "[Colle] " + subject)
-        event.add('dtstart', datetime.combine(event_date, start_time))
-        event.add('dtend', datetime.combine(event_date, end_time))
+        event.add('dtstart', start_datetime)
+        event.add('dtend', end_datetime)
         event.add('dtstamp', datetime.now())
+
+        description = f"Colleur: {colleur}"
+        event.add('description', description)
 
         if room != "":
             event.add('location', room)
@@ -290,8 +342,8 @@ def _get_day_lessons_events(event_date, day_schedule):
         # Skip events without a name
         if header:
             # Combine date with time
-            start_datetime = datetime.combine(event_date, start_time)
-            end_datetime = datetime.combine(event_date, end_time)
+            start_datetime = paris_tz.localize(datetime.combine(event_date, start_time))
+            end_datetime = paris_tz.localize(datetime.combine(event_date, end_time))
 
             headers = header.split('@')
             summary = headers[0]
@@ -377,3 +429,4 @@ def _format_starting_time(starting_time):
 
 if __name__ == '__main__':
     main()
+    #generate_all()
