@@ -148,6 +148,8 @@ def parse_csv_schedule():
         cleaned_planning = _group_long_subjects(planning)
         plannings[groupe_changeant_index] = cleaned_planning
 
+        print(cleaned_planning)
+
     return plannings
 
 
