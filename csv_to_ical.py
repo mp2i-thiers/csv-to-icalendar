@@ -70,12 +70,13 @@ def generate_schedule(
             raise Exception("Colle groupe needed")
         colle_schedule = parse_collometre(colle_group)
 
+    if static_group is None:
+        if colle_group is None:
+            raise Exception("Colle groupe or Static group needed")
+        else:
+            static_group = _get_static_group(colle_group)
+
     if include_schedule:
-        if static_group is None:
-            if colle_group is None:
-                raise Exception("Colle groupe or Static group needed")
-            else:
-                static_group = _get_static_group(colle_group)
         lesson_plannings = parse_csv_schedule()
 
     if include_room_planning:
