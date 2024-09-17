@@ -28,6 +28,29 @@ DAY_ABBR_MAP = {
     'Ve': 4,  # Friday
 }
 
+LV2_HORAIRE = {
+    'day_index': 3,
+    'start_time': time(16, 20),
+    'end_time': time(18, 15)
+}
+
+END_TIME_MAP = {
+    "08:30": time(8, 30),
+    "09:00": time(8, 55),
+    "10:15": time(9, 55),
+    "11:45": time(11, 45),
+    "12:15": time(12, 10),
+    "13:15": time(13, 10),
+    "13:45": time(13, 45),
+    "14:15": time(14, 10),
+    "14:45": time(14, 45),
+    "15:15": time(15, 10),
+    "16:20": time(16, 10),
+    "16:50": time(16, 45),
+    "17:20": time(17, 15),
+    "17:50": time(17, 45),
+    "last_hour": time(18, 15)
+}
 
 class StaticGroup(Enum):
     A = "a"
@@ -46,10 +69,12 @@ def main():
     colle_group = _get_user_colle_group()
     generate_schedule(
             colle_group=colle_group,
-            output_filename=f"schedule_{colle_group}.ics",
+            output_filename=f"schedule_occupied_{colle_group}.ics",
             include_colles=False,
             include_schedule=False,
-            include_room_planning=True
+            include_room_planning=False,
+            include_lv2=False,
+            include_ds=True
     )
 
 
@@ -59,11 +84,17 @@ def generate_schedule(
         output_filename="schedule.ics",
         include_colles=False,
         include_schedule=False,
-        include_room_planning=False
+        include_room_planning=False,
+        include_lv2=False,
+        include_ds=True
 ):
     lesson_plannings = None
     colle_schedule = None
     room_planning = None
+    ds_planning = None
+
+    if include_ds:
+        ds_planning = parse_csv_ds()
 
     if include_colles:
         if colle_group is None:
@@ -95,7 +126,10 @@ def generate_schedule(
             colle_schedule,
             lesson_plannings,
             room_planning,
-            static_group
+            static_group,
+            include_lv2=include_lv2,
+            include_ds=include_ds,
+            ds_planning=ds_planning,
     )
 
     with open(output_filename, 'wb') as f:
@@ -152,6 +186,61 @@ def parse_csv_schedule():
         plannings[groupe_changeant_index] = cleaned_planning
 
     return plannings
+
+
+def parse_csv_ds():
+    with open("ds.csv", newline='', encoding='utf-8') as csvfile:
+        reader = csv.reader(csvfile)
+        # Extract the header
+        _ = next(reader)
+
+        # Function to parse date in the format "DD/MM/YY"
+        def parse_date(date_str):
+            return datetime.strptime(date_str, '%d/%m/%y')
+
+        weeks = [[], [], [], []]  # On n'a pas de ds les premieres semaines
+
+        # Process each row in the CSV
+        for row in reader:
+            # Handle "Vacances" or "Début S2"
+            if (not row[2]) and (not row[3]) and (not row[4]):
+                continue
+
+            # Calculate days for Monday
+            monday_date = parse_date(row[1])
+
+            week_data = []
+
+            # Controle Lundi
+            if row[2]:
+                start_datetime = PARIS_TZ.localize(
+                    datetime.combine(monday_date, time(16, 20)))
+                end_datetime = PARIS_TZ.localize(
+                    datetime.combine(monday_date, time(18, 15)))
+
+                event = {"subject": row[2], "start_time": start_datetime, "end_time": end_datetime}
+                week_data.append(event)
+            # Controle Mercredi
+            if row[3]:
+                start_datetime = PARIS_TZ.localize(
+                    datetime.combine(monday_date + timedelta(days=2), time(15, 15)))
+                end_datetime = PARIS_TZ.localize(
+                    datetime.combine(monday_date + timedelta(days=2), time(18, 15)))
+
+                event = {"subject": row[3], "start_time": start_datetime, "end_time": end_datetime}
+                week_data.append(event)
+            # Controle lundi
+            if row[4]:
+                start_datetime = PARIS_TZ.localize(
+                    datetime.combine(monday_date + timedelta(days=5), time(8, 0)))
+                end_datetime = PARIS_TZ.localize(
+                    datetime.combine(monday_date + timedelta(days=5), time(12, 15)))
+
+                event = {"subject": row[4], "start_time": start_datetime, "end_time": end_datetime}
+                week_data.append(event)
+
+            weeks.append(week_data)
+    return weeks
 
 
 def parse_room_schedule():
@@ -254,7 +343,10 @@ def get_calendar(
         colle_planning=None,
         lesson_plannings=None,
         room_planning=None,
-        static_group=None
+        static_group=None,
+        include_lv2=False,
+        include_ds=False,
+        ds_planning=None
 ):
     if static_group is None:
         raise Exception("Il faut un groupe statique")
@@ -307,8 +399,60 @@ def get_calendar(
         for event in colle_events:
             calendar.add_component(event)
 
+    if include_lv2:
+        lv2_events = _get_lv2_events()
+        for event in lv2_events:
+            calendar.add_component(event)
+
+    if include_ds:
+        ds_events = _get_DS_events(ds_planning)
+        for event in ds_events:
+            calendar.add_component(event)
+
     return calendar
 
+
+def _get_lv2_events():
+    current_week = 0
+    # To take vacation into account
+    week_offset = 0
+
+    events = []
+
+    while current_week < WEEK_COUNT:
+        event_date = START_DATE + timedelta(days=LV2_HORAIRE["day_index"], weeks=current_week+week_offset)
+
+        # Combine date with time
+        start_datetime = PARIS_TZ.localize(
+            datetime.combine(event_date, LV2_HORAIRE["start_time"]))
+        end_datetime = PARIS_TZ.localize(
+            datetime.combine(event_date, LV2_HORAIRE["end_time"]))
+
+        event = Event()
+        event.add('summary', "LV2")
+        event.add('dtstart', start_datetime)
+        event.add('dtend', end_datetime)
+        event.add('dtstamp', datetime.now())
+
+        events.append(event)
+
+        week_offset += _get_next_week_offset(current_week + week_offset)
+        current_week += 1
+
+    return events
+
+def _get_DS_events(ds_planning):
+    events = []
+    for week in ds_planning:
+        for week_event in week:
+            event = Event()
+            event.add('summary', f"[DS] {week_event['subject']}")
+            event.add('dtstart', week_event["start_time"])
+            event.add('dtend', week_event["end_time"])
+            event.add('dtstamp', datetime.now())
+
+            events.append(event)
+    return events
 
 def _get_user_colle_group():
     if len(sys.argv) >= 2:
@@ -511,25 +655,7 @@ def _group_long_subjects(planning_brut):
 
 
 def _get_end_time(time_str):
-    transformation_dict = {
-        "08:30": time(8, 30),
-        "09:00": time(8, 55),
-        "10:15": time(9, 55),
-        "11:45": time(11, 45),
-        "12:15": time(12, 10),
-        "13:15": time(13, 10),
-        "13:45": time(13, 45),
-        "14:15": time(14, 10),
-        "14:45": time(14, 45),
-        "15:15": time(15, 10),
-        "16:20": time(16, 10),
-        "16:50": time(16, 45),
-        "17:20": time(17, 15),
-        "17:50": time(17, 45),
-        "last_hour": time(18, 15)
-    }
-
-    return transformation_dict[time_str]
+    return END_TIME_MAP[time_str]
 
 
 def _format_starting_time(starting_time):
@@ -537,4 +663,13 @@ def _format_starting_time(starting_time):
 
 
 if __name__ == '__main__':
-    main()
+    #main()
+    generate_schedule(
+            static_group=StaticGroup.C,
+            output_filename=f"schedule_ds.ics",
+            include_colles=False,
+            include_schedule=False,
+            include_room_planning=False,
+            include_lv2=False,
+            include_ds=True
+    )
