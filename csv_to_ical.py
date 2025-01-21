@@ -17,8 +17,8 @@ VACATION_STARTING_WEEKS = [
     14,  # Noël
 ]
 WEEK_COUNT = 16
-GROUP_COUNT = 3
-START_DATE = datetime(day=16, month=9, year=2024)
+GROUP_COUNT = 2
+START_DATE = datetime(day=27, month=1, year=2025)
 
 DAY_ABBR_MAP = {
     'Lu': 0,  # Monday
@@ -53,15 +53,13 @@ END_TIME_MAP = {
 }
 
 class StaticGroup(Enum):
-    A = "a"
-    B = "b"
-    C = "c"
+    PAIR = "pair"
+    IMPAIR = "impair"
 
 
 class ChangingGroup(Enum):
-    G1 = 0
-    G2 = 1
-    G3 = 2
+    GAUCHE = 0 # Groupe avec les case à "
+    DROITE = 1
 
 
 # The entrypoint of the program
@@ -144,8 +142,7 @@ def generate_all(
     if include_schedule:
         static_group_list = [
             StaticGroup.A,
-            StaticGroup.B,
-            StaticGroup.C
+            StaticGroup.B
         ]
         for groupe_statique in static_group_list:
             generate_schedule(
