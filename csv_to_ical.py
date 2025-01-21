@@ -58,8 +58,8 @@ class StaticGroup(Enum):
 
 
 class ChangingGroup(Enum):
-    GAUCHE = 0 # Groupe avec les case à "
-    DROITE = 1
+    GAUCHE = 0 # Groupe avec les case à gauche sur l'EDT
+    DROITE = 1 # Idem
 
 
 # The entrypoint of the program
