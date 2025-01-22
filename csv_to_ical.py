@@ -323,7 +323,7 @@ def parse_collometre(colle_group):
                             weeks=current_week
                     )
                     new_start_time = datetime.strptime("14", "%H").time()
-                    new_end_time = datetime.strptime("15")
+                    new_end_time = datetime.strptime("15", "%H").time()
 
                     colles.append((
                         current_subject,
