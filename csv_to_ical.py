@@ -17,7 +17,7 @@ VACATION_STARTING_WEEKS = [
     2,  # Février
     10,  # Avril
 
-] #ToDo
+]
 
 WEEK_COUNT = 19
 GROUP_COUNT = 2
@@ -275,7 +275,7 @@ def parse_collometre(colle_group):
 
             # Determine if the time range uses 'h' format or not and parse
             # accordingly
-            if 'h' in time_range:
+            if 'h' in time_range: #Pas de changement d'ergonomie
                 start_time_str, end_time_str = time_range.split('-')
                 # e.g. 12h15
                 start_time = datetime.strptime(start_time_str, '%Hh%M').time()
@@ -283,8 +283,8 @@ def parse_collometre(colle_group):
             else:
                 start_time_str, end_time_str = time_range.split('-')
                 # e.g. 12
-                start_time = datetime.strptime(start_time_str, '%H').time()
-                end_time = datetime.strptime(end_time_str, '%H').time()
+                start_time = datetime.strptime(start_time_str, '%H').time().replace(minute=15)
+                end_time = datetime.strptime(end_time_str, '%H').time().replace(minute=10)
 
             # Iterate over the groups (skipping columns 0, 1, and 2)
             for i, group in enumerate(row[3:], 3):
@@ -670,19 +670,6 @@ def _format_starting_time(starting_time):
 
 # ToDo ?
 def main():
-    colle_group = _get_user_colle_group()
-    generate_schedule(
-            colle_group=colle_group,
-            output_filename=f"schedule_occupied_{colle_group}.ics",
-            include_colles=False,
-            include_schedule=False,
-            include_room_planning=False,
-            include_lv2=False,
-            include_ds=True
-    )
-
-if __name__ == '__main__':
-    #main()
     generate_schedule(
             static_group=StaticGroup.PAIR,
             output_filename=f"schedule.ics",
@@ -692,3 +679,17 @@ if __name__ == '__main__':
             include_lv2=False,
             include_ds=False
     )
+
+if __name__ == '__main__':
+    #main()
+    colle_group = 10
+    generate_schedule(
+            colle_group=colle_group,
+            output_filename=f"schedule_{colle_group}.ics",
+            include_colles=True,
+            include_schedule=False,
+            include_room_planning=False,
+            include_lv2=False,
+            include_ds=False
+    )
+
