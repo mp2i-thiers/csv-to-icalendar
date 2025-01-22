@@ -64,15 +64,15 @@ class ChangingGroup(Enum):
 
 # The entrypoint of the program
 def main():
-    colle_group = _get_user_colle_group()
+    colle_group = 12
     generate_schedule(
             colle_group=colle_group,
-            output_filename=f"schedule_occupied_{colle_group}.ics",
-            include_colles=False,
+            output_filename=f"colles_{colle_group}.ics",
+            include_colles=True,
             include_schedule=False,
             include_room_planning=False,
             include_lv2=False,
-            include_ds=True
+            include_ds=False
     )
 
 
@@ -298,6 +298,9 @@ def parse_collometre(colle_group):
 
             # Iterate over the groups (skipping columns 0, 1, and 2)
             for i, group in enumerate(row[3:], 3):
+                changed_date = group.endswith("*")
+                group = group.strip("*")
+
                 # Handle multiple groups separated by '+'
                 groups = group.split('+') if group else []
 
@@ -312,6 +315,23 @@ def parse_collometre(colle_group):
                     continue
 
                 current_week = _apply_week_offsets(i - 3)
+
+                if changed_date:
+                    day_offset = DAY_ABBR_MAP["Me"]
+                    event_date = START_DATE + timedelta(
+                            days=day_offset,
+                            weeks=current_week
+                    )
+                    new_start_time = datetime.strptime("14", "%H").time()
+                    new_end_time = datetime.strptime("15")
+
+                    colles.append((
+                        current_subject,
+                        colleur,
+                        (event_date, new_start_time, new_end_time),
+                        room
+                    ))
+                    continue
 
                 # Calculate the actual event date based on the day abbreviation
                 if day_abbr in DAY_ABBR_MAP:
@@ -477,11 +497,10 @@ def _get_user_colle_group():
 
 def _get_static_group(colle_group):
     static_group_list = [
-        StaticGroup.A,
-        StaticGroup.B,
-        StaticGroup.C
+        StaticGroup.PAIR,
+        StaticGroup.IMPAIR
     ]
-    return static_group_list[(colle_group + 2) % 3]
+    return static_group_list[(colle_group) % 2]
 
 
 def _apply_week_offsets(current):
@@ -660,13 +679,13 @@ def _format_starting_time(starting_time):
 
 
 if __name__ == '__main__':
-    #main()
-    generate_schedule(
-            static_group=StaticGroup.C,
-            output_filename=f"schedule_ds.ics",
-            include_colles=False,
-            include_schedule=False,
-            include_room_planning=False,
-            include_lv2=False,
-            include_ds=True
-    )
+    main()
+    #generate_schedule(
+    #        static_group=StaticGroup.C,
+    #        output_filename=f"schedule_ds.ics",
+    #        include_colles=False,
+    #        include_schedule=False,
+    #        include_room_planning=False,
+    #        include_lv2=False,
+    #        include_ds=True
+    #)
