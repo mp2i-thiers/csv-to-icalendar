@@ -16,8 +16,8 @@ DAYS_IN_WEEK = 6
 VACATION_STARTING_WEEKS = [
     2,  # Février
     10,  # Avril
-] #ToDo
 
+] #ToDo
 
 WEEK_COUNT = 19
 GROUP_COUNT = 2
@@ -288,6 +288,9 @@ def parse_collometre(colle_group):
 
             # Iterate over the groups (skipping columns 0, 1, and 2)
             for i, group in enumerate(row[3:], 3):
+                changed_date = group.endswith("*")
+                group = group.strip("*")
+
                 # Handle multiple groups separated by '+'
                 groups = group.split('+') if group else []
 
@@ -302,6 +305,23 @@ def parse_collometre(colle_group):
                     continue
 
                 current_week = _apply_week_offsets(i - 3)
+
+                if changed_date:
+                    day_offset = DAY_ABBR_MAP["Me"]
+                    event_date = START_DATE + timedelta(
+                            days=day_offset,
+                            weeks=current_week
+                    )
+                    new_start_time = datetime.strptime("14", "%H").time()
+                    new_end_time = datetime.strptime("15", "%H").time()
+
+                    colles.append((
+                        current_subject,
+                        colleur,
+                        (event_date, new_start_time, new_end_time),
+                        room
+                    ))
+                    continue
 
                 # Calculate the actual event date based on the day abbreviation
                 if day_abbr in DAY_ABBR_MAP:
@@ -645,6 +665,7 @@ def _get_end_time(time_str):
 
 def _format_starting_time(starting_time):
     return datetime.strptime(starting_time, "%H:%M").time()
+
 
 
 # ToDo ?
