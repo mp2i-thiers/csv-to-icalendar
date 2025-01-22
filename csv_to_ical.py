@@ -11,11 +11,14 @@ PARIS_TZ = pytz.timezone('Europe/Paris')
 
 # Counting saturday
 DAYS_IN_WEEK = 6
-# Given that week 0 starts on 16 september
+
+# Semaine 0 le 27 janvier 2025
 VACATION_STARTING_WEEKS = [
     2,  # Février
     10,  # Avril
-]
+
+] #ToDo
+
 WEEK_COUNT = 19
 GROUP_COUNT = 2
 START_DATE = datetime(day=27, month=1, year=2025)
@@ -38,8 +41,10 @@ END_TIME_MAP = {
     "08:30": time(8, 30),
     "09:00": time(8, 55),
     "10:15": time(9, 55),
+    "11:15": time(11, 10),
     "11:45": time(11, 45),
     "12:15": time(12, 10),
+    "12:45": time(12, 45),
     "13:15": time(13, 10),
     "13:45": time(13, 45),
     "14:15": time(14, 10),
@@ -56,24 +61,9 @@ class StaticGroup(Enum):
     PAIR = "pair"
     IMPAIR = "impair"
 
-
 class ChangingGroup(Enum):
     GAUCHE = 0 # Groupe avec les case à gauche sur l'EDT
     DROITE = 1 # Idem
-
-
-# The entrypoint of the program
-def main():
-    colle_group = 12
-    generate_schedule(
-            colle_group=colle_group,
-            output_filename=f"colles_{colle_group}.ics",
-            include_colles=True,
-            include_schedule=False,
-            include_room_planning=False,
-            include_lv2=False,
-            include_ds=False
-    )
 
 
 def generate_schedule(
@@ -252,7 +242,7 @@ def parse_room_schedule():
             for day in range(DAYS_IN_WEEK):
 
                 event = ("", 0)
-                if row[day+1] not in ["1", "2", "3"]:
+                if row[day+1] not in ["1", "2"]:
                     event = (row[0], None)
                 else:
                     event = (row[0], int(row[day + 1]) - 1)
@@ -500,7 +490,7 @@ def _get_static_group(colle_group):
         StaticGroup.PAIR,
         StaticGroup.IMPAIR
     ]
-    return static_group_list[(colle_group) % 2]
+    return static_group_list[(colle_group + 1) % 2]
 
 
 def _apply_week_offsets(current):
@@ -516,11 +506,10 @@ def _apply_week_offsets(current):
 # Gives the actual changing group given the current week
 def _get_changing_group(static_group, current_week):
     static_to_changin_group_map = {
-        StaticGroup.A: ChangingGroup.G1,
-        StaticGroup.B: ChangingGroup.G2,
-        StaticGroup.C: ChangingGroup.G3,
+        StaticGroup.PAIR: ChangingGroup.GAUCHE,
+        StaticGroup.IMPAIR: ChangingGroup.DROITE,
     }
-    return (static_to_changin_group_map[static_group].value - current_week) % 3
+    return (static_to_changin_group_map[static_group].value - current_week) % 2
 
 
 # Returns a list of all current week events
@@ -678,14 +667,28 @@ def _format_starting_time(starting_time):
     return datetime.strptime(starting_time, "%H:%M").time()
 
 
+
+# ToDo ?
+def main():
+    colle_group = _get_user_colle_group()
+    generate_schedule(
+            colle_group=colle_group,
+            output_filename=f"schedule_occupied_{colle_group}.ics",
+            include_colles=False,
+            include_schedule=False,
+            include_room_planning=False,
+            include_lv2=False,
+            include_ds=True
+    )
+
 if __name__ == '__main__':
-    main()
-    #generate_schedule(
-    #        static_group=StaticGroup.C,
-    #        output_filename=f"schedule_ds.ics",
-    #        include_colles=False,
-    #        include_schedule=False,
-    #        include_room_planning=False,
-    #        include_lv2=False,
-    #        include_ds=True
-    #)
+    #main()
+    generate_schedule(
+            static_group=StaticGroup.PAIR,
+            output_filename=f"schedule.ics",
+            include_colles=False,
+            include_schedule=True,
+            include_room_planning=False,
+            include_lv2=False,
+            include_ds=False
+    )
