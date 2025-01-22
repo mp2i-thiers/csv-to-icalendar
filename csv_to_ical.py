@@ -13,10 +13,10 @@ PARIS_TZ = pytz.timezone('Europe/Paris')
 DAYS_IN_WEEK = 6
 # Given that week 0 starts on 16 september
 VACATION_STARTING_WEEKS = [
-    5,  # Toussaint
-    14,  # Noël
+    2,  # Février
+    10,  # Avril
 ]
-WEEK_COUNT = 16
+WEEK_COUNT = 19
 GROUP_COUNT = 2
 START_DATE = datetime(day=27, month=1, year=2025)
 
