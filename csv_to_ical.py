@@ -339,7 +339,6 @@ def parse_collometre(colle_group):
                     (event_date, start_time, end_time),
                     room
                 ))
-
     return colles
 
 
@@ -543,10 +542,7 @@ def _get_week_room_events(room_planning, changing_group, current_week):
 
             event = Event()
             print(group)
-            event.add(
-                    'summary',
-                    "Salle occuppée par G" + str(group+1)
-            )
+            event.add('summary', "Salle occuppée")
             event.add('dtstart', start_datetime)
             event.add('dtend', end_datetime)
 
@@ -576,7 +572,7 @@ def _get_colle_events(colle_schedule):
         event.add('dtend', end_datetime)
         event.add('dtstamp', datetime.now())
 
-        description = f"Colleur: {colleur}"
+        description = f"Colleur·se: {colleur}"
         event.add('description', description)
 
         if room != "":
@@ -685,11 +681,12 @@ if __name__ == '__main__':
     colle_group = 10
     generate_schedule(
             colle_group=colle_group,
+            static_group=StaticGroup.PAIR,
             output_filename=f"schedule_{colle_group}.ics",
             include_colles=True,
-            include_schedule=False,
+            include_schedule=True,
             include_room_planning=False,
-            include_lv2=False,
+            include_lv2=True,
             include_ds=False
     )
 
