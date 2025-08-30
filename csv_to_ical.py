@@ -14,14 +14,14 @@ DAYS_IN_WEEK = 6
 
 # Semaine 0 le 27 janvier 2025
 VACATION_STARTING_WEEKS = [
-    2,  # Février
-    10,  # Avril
-
+    7,  # Octobre/Novembre
+    16,  # Décembre/Janvier
+    24, # Février
 ] #ToDo
 
-WEEK_COUNT = 19
+WEEK_COUNT = 24
 GROUP_COUNT = 2
-START_DATE = datetime(day=27, month=1, year=2025)
+START_DATE = datetime(day=1, month=9, year=2025)
 
 DAY_ABBR_MAP = {
     'Lu': 0,  # Monday
@@ -599,10 +599,12 @@ def _get_day_lessons_events(event_date, day_schedule):
                     datetime.combine(event_date, start_time))
             end_datetime = PARIS_TZ.localize(
                     datetime.combine(event_date, end_time))
-
+            
             headers = header.split('@')
             summary = headers[0]
-            location = headers[1]
+            location = ""
+            if "@" in header:
+                location = headers[1]
 
             event = Event()
             event.add('summary', summary)
@@ -685,7 +687,7 @@ if __name__ == '__main__':
     #main()
     generate_schedule(
             static_group=StaticGroup.PAIR,
-            output_filename=f"schedule.ics",
+            output_filename=f"schedule_mpi.ics",
             include_colles=False,
             include_schedule=True,
             include_room_planning=False,
